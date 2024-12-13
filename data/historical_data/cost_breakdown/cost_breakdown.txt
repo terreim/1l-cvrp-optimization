@@ -1,0 +1,24 @@
+{
+  "VehicleID": {
+    "Date": {
+      "per_diem": "float",
+      "driver_salary": "float",
+      "fuel_cost": "float",
+      "custom_fee": "float",
+      "tax_on_goods": "float",
+      "overhead": "float",
+      "emergency": "float",
+      "total_cost": "float"
+    },
+    "total": {
+      "per_diem": "float",
+      "driver_salary": "float",
+      "fuel_cost": "float",
+      "custom_fee": "float",
+      "tax_on_goods": "float",
+      "overhead": "float",
+      "emergency": "float",
+      "total_cost": "float"
+    }
+  }
+}

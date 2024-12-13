@@ -1,0 +1,23 @@
+{
+  "countries": {
+    "CountryA": {
+      "time_windows": [
+        {
+          "start_time": "HH:MM",
+          "end_time": "HH:MM",
+          "delay_factor": "float"
+        }
+      ],
+      "routes": {
+        "CityA-CityB": {
+          "distance": "integer",
+          "base_time": "integer",
+          "road_type": "string"
+        }
+      }
+    }
+  }
+}
+
+
+

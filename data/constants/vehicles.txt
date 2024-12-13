@@ -1,0 +1,17 @@
+{
+    "fleet": [
+        {
+            "id": "XXX", 
+            "type": "XXXXX",
+            "dimensions": {
+                "length": XXX.XXX,
+                "width": X.XXX,
+                "height": X.XXX
+            },
+            "max_weight": XXXXX,
+            "fuel_capacity": XXX,
+            "fuel_efficiency": X.X
+        }
+        // Additional vehicle entries follow the same structure
+    ]
+}

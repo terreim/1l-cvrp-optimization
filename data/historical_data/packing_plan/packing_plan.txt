@@ -1,0 +1,35 @@
+{
+  "vehicles": [
+    {
+      "id": "String",
+      "total_cbm": "Float",
+      "total_weight": "Integer",
+      "total_price": "Integer",
+      "total_quantity": "Integer",
+      "shipments": [
+        {
+          "id": "String",
+          "order_id": "String",
+          "total_cbm": "Float",
+          "weight": "Integer",
+          "position": "Integer",
+          "stackable": "Boolean",
+          "origin": "String",
+          "delivery": {"location_id": "String"},
+          "price": "Integer",
+          "dimensions": [
+            {
+              "length": "Float",
+              "width": "Float",
+              "height": "Float",
+              "quantity": "Integer"
+            }
+            // Additional dimension entries follow the same structure
+          ]
+        }
+        // Additional shipment entries follow the same structure
+      ]
+    }
+    // Additional vehicle entries follow the same structure
+  ]
+}

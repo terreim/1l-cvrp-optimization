@@ -1,0 +1,45 @@
+{
+    "locations": {
+        "depots": [
+            {
+                "id": "XXX",
+                "name": "XXXXX",
+                "country": "XXXXX",
+                "type": "depot",
+                "operating_hours": {
+                    "start": "XX:XX",
+                    "end": "XX:XX"
+                }
+            }
+            // Additional depot entries follow the same structure
+        ],
+        "border_crossings": [
+            {
+                "id": "XXX",
+                "name": "XXXXX",
+                "countries": ["XXXXX", "XXXXX"],
+                "customs_fees": {
+                    "base_fee": XXX,
+                    "tax_of_goods_not_transit": X.XX
+                },
+                "operating_hours": {
+                    "start": "XX:XX",
+                    "end": "XX:XX"
+                },
+                "processing_times": {
+                    "inbound": {
+                        "min": XXX,
+                        "typical": XXX,
+                        "max": XXX
+                    },
+                    "outbound": {
+                        "min": XXX,
+                        "typical": XXX,
+                        "max": XXX
+                    }
+                }
+            }
+            // Additional border crossing entries follow the same structure
+        ]
+    }
+}

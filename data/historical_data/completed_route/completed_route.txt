@@ -1,0 +1,26 @@
+{
+    "VehicleID": {
+        "starting_point": "String",
+        "starting_time": "DateTime",
+        "route": [
+            {
+                "destination": "String",
+                "arrival": "DateTime",
+                "time_stayed": "Integer or null",
+                "departure": "DateTime or null",
+                "time_travelled": "Integer",
+                "time_rested": "Integer",
+                "distance_travelled": "Integer",
+                "refuel_count": "Integer"
+            }
+            // Additional route entries follow the same structure
+        ],
+        "totals": {
+            "time_travelled": "Integer",
+            "time_rested": "Integer",
+            "distance_travelled": "Integer",
+            "refuel_count": "Integer"
+        }
+    }
+    // Additional vehicle entries follow the same structure
+}
