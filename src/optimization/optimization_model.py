@@ -8,7 +8,6 @@ from src.fuzzy.fuzzy_number import TriangularFuzzyNumber
 from src.models.vehicle import Vehicle
 from src.models.shipment import Shipment
 from src.models.cost import Cost
-from src.optimization.objective_function import evaluate_solution
 from src.optimization.acceptance_probability import acceptance_probability, fuzzy_dominance
 from src.optimization.swap_operations import swap_shipments_between_vehicles
 from src.optimization.packing import first_fit_decreasing_packing
@@ -136,31 +135,6 @@ class SimulatedAnnealingOptimizer:
     def is_route_valid(route: List[str], network_graph: nx.Graph, node_converter) -> bool:
         """Check if a route is valid in terms of connectivity."""
         return validate_route(route, network_graph, node_converter)
-
-    def plan_route(self, vehicle: Vehicle, shipments: List[Shipment]) -> List[str]:
-        """Plan route using proper node name conversion."""
-        if not shipments:
-            return []
-
-        # Group shipments by destination
-        dest_shipments = {}
-        for shipment in shipments:
-            dest_id = self.get_node_code(shipment.delivery_location_id)
-            if dest_id not in dest_shipments:
-                dest_shipments[dest_id] = []
-            dest_shipments[dest_id].append(shipment)
-
-        # Order destinations by total volume
-        destinations = [(dest, sum(s.total_cbm for s in group))
-                       for dest, group in dest_shipments.items()]
-        destinations.sort(key=lambda x: x[1], reverse=True)
-
-        # Build route with proper node names
-        route = ["NNG"]  # Starting point
-        for dest, _ in destinations:
-            route.append(self.get_node_name(dest))
-        
-        return route
 
     def generate_initial_solution(self) -> Dict[Vehicle, List[Shipment]]:
         """Generate initial solution using First-Fit Decreasing with region grouping."""
@@ -346,39 +320,6 @@ class SimulatedAnnealingOptimizer:
         
         return neighbor
 
-    def _print_progress(self, iteration: int, current_cost, neighbor_cost, accepted: bool = None):
-        """Print detailed progress information."""
-        progress = (iteration / self.max_iterations) * 100
-        
-        print("\n" + "="*50)
-        print(f"Progress: {progress:.1f}% (Iteration {iteration}/{self.max_iterations})")
-        print(f"Temperature: {self.temperature:.2f}")
-        
-        # Cost comparison
-        current_value = current_cost.defuzzify()
-        neighbor_value = neighbor_cost.defuzzify()
-        best_value = self.best_cost.defuzzify()
-        
-        print("\nCosts:")
-        print(f"Current: {current_value:.2f}")
-        print(f"Neighbor: {neighbor_value:.2f}")
-        print(f"Best: {best_value:.2f}")
-        
-        # Solution status
-        if accepted is not None:
-            status = "ACCEPTED" if accepted else "REJECTED"
-            diff = ((neighbor_value - current_value) / current_value) * 100
-            print(f"\nNeighbor solution {status}")
-            print(f"Cost difference: {diff:+.2f}%")
-        
-        # Overall statistics
-        acceptance_rate = (self.accepted_solutions / (iteration + 1)) * 100
-        print(f"\nStatistics:")
-        print(f"Acceptance rate: {acceptance_rate:.1f}%")
-        print(f"Accepted solutions: {self.accepted_solutions}")
-        print(f"Rejected solutions: {self.rejected_solutions}")
-        print(f"Improvements found: {self.improvement_count}")
-
     def optimize(self):
         """Run the simulated annealing optimization."""
         iteration = 0
@@ -431,13 +372,14 @@ class SimulatedAnnealingOptimizer:
             # Calculate acceptance probability
             cost_diff = new_cost.defuzzify() - current_cost.defuzzify()
             ap = self.acceptance_probability(cost_diff)
-            
+            rand_val = random.random()
+
             if iteration % 10 == 0:
-                print(f"\nNeighbor solution {'ACCEPTED' if random.random() < ap else 'REJECTED'}")
+                print(f"\nNeighbor solution {'ACCEPTED' if rand_val < ap else 'REJECTED'}")
                 print(f"Cost difference: {'+' if cost_diff >= 0 else ''}{(cost_diff/current_cost.defuzzify())*100:.2f}%")
             
             # Accept or reject new solution
-            if random.random() < ap:
+            if rand_val < ap:
                 current_solution = copy.deepcopy(new_solution)
                 current_cost = new_cost
                 current_validation = new_validation
@@ -538,8 +480,22 @@ class SimulatedAnnealingOptimizer:
         total_weight_utilization = 0
         vehicles_used = 0
         
+        # Track historical costs for unused vehicles
+        unused_vehicle_costs = 0
+        
         for vehicle, shipments in solution.items():
             if not shipments:
+                # Add historical cost for unused vehicle
+                if hasattr(vehicle, 'total_costs'):
+                    historical_cost = vehicle.total_costs.get('total_cost', 0)
+                    vehicle_costs = TriangularFuzzyNumber(
+                        historical_cost * 0.95,
+                        historical_cost,
+                        historical_cost * 1.05
+                    )
+                    solution_costs[vehicle] = vehicle_costs
+                    total_cost = total_cost + vehicle_costs
+                    unused_vehicle_costs += historical_cost
                 continue
                 
             vehicles_used += 1
@@ -560,7 +516,7 @@ class SimulatedAnnealingOptimizer:
                 self.node_converter['get_node_name']
             )
             
-            # Calculate route cost
+            # Calculate route cost (this already includes tax and customs fees)
             route_cost = self.cost_calculator.calculate_route_cost(route, self.graph)
             
             # Add penalties
@@ -589,9 +545,44 @@ class SimulatedAnnealingOptimizer:
             if max(abs(avg_volume_util - volume_util) for _, shipments in solution.items() if shipments) > 20:
                 balance_penalty = TriangularFuzzyNumber(1000, 1500, 2000)
                 total_cost = total_cost + balance_penalty
+            
+            # Penalty for excessive unused vehicles (if more than 1 vehicle is unused)
+            unused_vehicles = len(solution) - vehicles_used
+            if unused_vehicles > 1:
+                unused_penalty = TriangularFuzzyNumber(
+                    1000 * (unused_vehicles - 1),
+                    1500 * (unused_vehicles - 1),
+                    2000 * (unused_vehicles - 1)
+                )
+                total_cost = total_cost + unused_penalty
         
-        # Validate solution
-        validation_results = self.validator.validate_solution(solution, solution_costs)
+        # Create detailed validation results
+        validation_results = {
+            'is_valid': True,
+            'vehicles_used': vehicles_used,
+            'unused_vehicles': len(solution) - vehicles_used,
+            'unused_vehicle_costs': unused_vehicle_costs,
+            'total_volume_utilization': total_volume_utilization / vehicles_used if vehicles_used > 0 else 0,
+            'total_weight_utilization': total_weight_utilization / vehicles_used if vehicles_used > 0 else 0,
+            'cost_breakdown': {
+                vehicle.vehicle_id: {
+                    'total_cost': cost.defuzzify(),
+                    'utilization': {
+                        'volume': sum(s.total_cbm for s in solution[vehicle]) / vehicle.max_cbm * 100 if solution[vehicle] else 0,
+                        'weight': sum(s.weight for s in solution[vehicle]) / vehicle.max_weight * 100 if solution[vehicle] else 0
+                    },
+                    'shipments': len(solution[vehicle]) if solution[vehicle] else 0,
+                    'is_active': bool(solution[vehicle])
+                }
+                for vehicle, cost in solution_costs.items()
+            }
+        }
+        
+        # Add validator results if available
+        if self.validator:
+            validator_results = self.validator.validate_solution(solution, solution_costs)
+            validation_results.update(validator_results)
+        
         return total_cost, validation_results
 
     def acceptance_probability(self, cost_diff: float) -> float:
@@ -701,93 +692,3 @@ class SimulatedAnnealingOptimizer:
         'total_shipments': sum(len(s) for s in solution.values()),
         'vehicle_metrics': vehicle_metrics
     }
-        
-
-    def print_solution_summary(self, solution: Dict[Vehicle, List[Shipment]], 
-                             cost_comparisons: Dict, metrics: Dict):
-        """Print comprehensive solution summary."""
-        print("\n" + "="*50)
-        print("OPTIMIZATION RESULTS")
-        print("="*50)
-        
-        print("\n=== Overall Results ===")
-        print(f"Best solution cost: ${self.best_cost.defuzzify():,.2f}")
-        print(f"Total distance: {metrics['total_distance']:,.2f} km")
-        print(f"Total border crossings: {metrics['border_crossings']}")
-        print(f"Solution validity: {self.best_validation['is_valid']}")
-        
-        print("\n=== Vehicle Assignments ===")
-        for vehicle, shipments in solution.items():
-            print(f"\nVehicle {vehicle.vehicle_id}:")
-            if not shipments:
-                print("No shipments assigned")
-                continue
-            
-            # Get route details
-            route = ['Nanning'] + [s.delivery_location_id for s in shipments]
-            distance = sum(nx.shortest_path_length(self.graph, route[i], route[i+1], weight='distance') 
-                         for i in range(len(route)-1))
-            
-            # Count border crossings
-            border_crossings = 0
-            current_country = self.graph.nodes['Nanning']['country']
-            for node in route[1:]:
-                next_country = self.graph.nodes[node]['country']
-                if current_country != next_country:
-                    border_crossings += 1
-                    current_country = next_country
-            
-            print(f"Route: {' -> '.join(route)}")
-            print(f"Distance: {distance:,.2f} km")
-            print(f"Border crossings: {border_crossings}")
-            
-            # Calculate utilization
-            total_volume = sum(s.total_cbm for s in shipments)
-            total_weight = sum(s.weight for s in shipments)
-            print("Capacity Utilization:")
-            print(f"  Volume: {(total_volume/vehicle.max_cbm)*100:.2f}% ({total_volume:.2f}/{vehicle.max_cbm:.2f} CBM)")
-            print(f"  Weight: {(total_weight/vehicle.max_weight)*100:.2f}% ({total_weight:,.2f}/{vehicle.max_weight:,.2f} kg)")
-            
-            print("Shipments:")
-            for shipment in shipments:
-                print(f"  - {shipment.shipment_id} to {shipment.delivery_location_id}")
-                print(f"    Volume: {shipment.total_cbm:.2f} CBM")
-                print(f"    Weight: {shipment.weight:,.2f} kg")
-                print(f"    Value: ${shipment.value:,.2f}")
-        
-        # Print cost comparisons
-        if cost_comparisons:
-            print("\n=== Cost Comparison ===")
-            total_historical = 0
-            total_optimized = 0
-            
-            for vehicle_id, comparison in cost_comparisons.items():
-                historical = comparison['historical_cost']
-                optimized = comparison['current_cost']
-                improvement = ((historical - optimized) / historical) * 100
-                savings = historical - optimized
-                
-                print(f"\nVehicle {vehicle_id}:")
-                print(f"  Historical cost: ${historical:,.2f}")
-                print(f"  Optimized cost: ${optimized:,.2f}")
-                print(f"  Improvement: {improvement:.2f}%")
-                print(f"  Savings: ${savings:,.2f}")
-                
-                total_historical += historical
-                total_optimized += optimized
-            
-            # Print overall improvement
-            total_savings = total_historical - total_optimized
-            overall_improvement = ((total_historical - total_optimized) / total_historical) * 100
-            
-            print("\n=== Overall Cost Improvement ===")
-            print(f"Total Historical Cost: ${total_historical:,.2f}")
-            print(f"Total Optimized Cost: ${total_optimized:,.2f}")
-            print(f"Total Savings: ${total_savings:,.2f}")
-            print(f"Overall Improvement: {overall_improvement:.2f}%")
-            
-            print("\n=== Specific Improvements ===")
-            for vehicle_id, comparison in cost_comparisons.items():
-                improvement = ((comparison['historical_cost'] - comparison['current_cost']) / 
-                             comparison['historical_cost']) * 100
-                print(f"- Vehicle {vehicle_id}: {improvement:.2f}% improvement")

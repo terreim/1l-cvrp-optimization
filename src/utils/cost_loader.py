@@ -1,5 +1,3 @@
-# utils/cost_loader.py
-
 def assign_costs_to_vehicles(costs_data, vehicles):
     """
     Assign cost data to each vehicle.

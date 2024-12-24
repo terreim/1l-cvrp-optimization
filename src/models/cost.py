@@ -56,13 +56,21 @@ class Cost:
         }
 
     def calculate_cost(self, solution: Dict[Vehicle, List[Shipment]]) -> float:
-        """Calculate total cost of solution including route efficiency and load balance."""
-        route_cost = self.calculate_route_cost(solution)
-        balance_penalty = self.calculate_balance_penalty(solution)
-        proximity_penalty = self.calculate_proximity_penalty(solution)
-        unused_vehicle_penalty = self.calculate_unused_vehicle_penalty(solution)
+        """Calculate total cost of solution including historical costs for unused vehicles."""
+        total_cost = 0
         
-        return route_cost + balance_penalty + proximity_penalty + unused_vehicle_penalty
+        for vehicle, shipments in solution.items():
+            if not shipments:
+                # Add historical cost if available
+                if hasattr(vehicle, 'total_costs'):
+                    total_cost += vehicle.total_costs.get('total_cost', 0)
+                continue
+                
+            # Calculate costs for vehicles with shipments
+            route_cost = self.calculate_route_cost(['Nanning'] + [s.delivery_location_id for s in shipments])
+            total_cost += route_cost.defuzzify()
+        
+        return total_cost
 
     def calculate_proximity_penalty(self, solution: Dict[Vehicle, List[Shipment]]) -> float:
         """Calculate penalty for not consolidating nearby destinations."""
@@ -132,26 +140,6 @@ class Cost:
         unused_count = sum(1 for shipments in solution.values() if not shipments)
         # Lower penalty for unused vehicles to allow for better consolidation
         return unused_count * 300
-
-    def calculate_balance_penalty(self, solution: Dict[Vehicle, List[Shipment]]) -> float:
-        """Calculate penalty for unbalanced load distribution."""
-        # Get volume utilization for each vehicle
-        utilizations = [
-            sum(s.total_cbm for s in shipments) / vehicle.max_cbm
-            for vehicle, shipments in solution.items()
-            if vehicle.max_cbm > 0  # Avoid division by zero
-        ]
-        
-        if not utilizations:
-            return 0
-        
-        # Calculate standard deviation of utilizations
-        avg_util = sum(utilizations) / len(utilizations)
-        variance = sum((u - avg_util) ** 2 for u in utilizations) / len(utilizations)
-        std_dev = variance ** 0.5
-        
-        # Penalize based on deviation from balanced load
-        return std_dev * 1000  # Adjust multiplier as needed
 
     def calculate_travel_time(self, distance: float, is_border_crossing: bool) -> Dict[str, float]:
         """
@@ -241,14 +229,14 @@ class Cost:
         ]) * refuel_stops / 2  # Average between countries
         
         costs = {
-            "per_diem": self.per_diem_rate * days,  # Per diem for actual days traveled
-            "driver_salary": fuzzy_salary.defuzzify() * days,  # Salary for actual days
+            "per_diem": self.per_diem_rate,
+            "driver_salary": self.get_fuzzy_driver_salary(distance).defuzzify(),
             "fuel_cost": self.calculate_fuel_cost(distance, fuel_efficiency),
-            "refuel_service_cost": refuel_cost,
+            "refuel_service_cost": self.refuel_costs.get(from_country, 4),
             "custom_fee": self.get_customs_fee(from_country, to_country) if is_border_crossing else 0.0,
-            "tax_on_goods": self.calculate_tax(goods_value, to_country) if is_border_crossing else 0.0,
-            "overhead": 100.0 if is_first_day else 0.0,
-            "emergency": 200.0 if is_first_day else 0.0
+            "tax_on_goods": self.calculate_tax(goods_value, to_country),  # Apply tax regardless of border crossing
+            "overhead": 100.0 if is_first_day else 50.0,  # Reduced overhead for subsequent days
+            "emergency": 200.0 if is_first_day else 100.0  # Reduced emergency cost for subsequent days
         }
         
         costs["total_cost"] = sum(costs.values())
@@ -258,7 +246,8 @@ class Cost:
 
     def calculate_tax(self, goods_value: float, country: str) -> float:
         """Calculate tax based on goods value and destination country."""
-        return goods_value * self.tax_rates.get(country, 0.0)
+        base_tax = goods_value * max(self.tax_rates.get(country, 0.10), 0.10)
+        return base_tax
 
     def get_fuzzy_processing_time(self, from_country: str, to_country: str, is_inbound: bool) -> TriangularFuzzyNumber:
         """

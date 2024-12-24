@@ -43,11 +43,11 @@ def nearest_neighbor_with_2opt(origin: str,
     improved = True
     while improved:
         improved = False
-        for i in range(1, len(route) - 2):
-            for j in range(i + 1, len(route)):
-                if j - i == 1:
-                    continue
+        for i in range(0, len(route) - 2):
+            for j in range(i + 2, len(route)):
                 try:
+                    if j - i == 1:
+                        continue
                     # Calculate current distance
                     current_distance = (
                         nx.shortest_path_length(graph, route[i-1], route[i], weight='distance') +
@@ -267,8 +267,8 @@ def evaluate_route_efficiency(route: List[str],
             direct = nx.shortest_path_length(graph, a, c, weight='distance')
             through_b = (nx.shortest_path_length(graph, a, b, weight='distance') +
                         nx.shortest_path_length(graph, b, c, weight='distance'))
-            if through_b > direct * 1.3:  # Reduced threshold to 30% longer
-                penalty += (through_b - direct) * 3  # Tripled the penalty
+            if through_b > direct * 1.2:  # Reduced threshold to 20% longer
+                penalty += (through_b - direct) * 5  # Fifth the penalty
     except nx.NetworkXNoPath:
         return float('inf')
     

@@ -130,25 +130,49 @@ def pair_shipment_swap(solution: Dict[Vehicle, List[Shipment]],
     return solution
 
 def destination_based_swap(solution: Dict[Vehicle, List[Shipment]], 
-                         v1: Vehicle, v2: Vehicle,
-                         network_graph: nx.Graph) -> Dict[Vehicle, List[Shipment]]:
-    """Swap shipments going to the same or nearby destinations."""
+                           v1: Vehicle, 
+                           v2: Vehicle,
+                           network_graph: nx.Graph) -> Dict[Vehicle, List[Shipment]]:
+    """Swap shipments going to the same or nearby destinations, with capacity checks."""
     v1_dests = {s.delivery_location_id for s in solution[v1]}
     v2_dests = {s.delivery_location_id for s in solution[v2]}
     
+    # Find any common destinations between v1 and v2
     common_dests = v1_dests.intersection(v2_dests)
-    if common_dests:
-        dest = random.choice(list(common_dests))
-        s1 = random.choice([s for s in solution[v1] if s.delivery_location_id == dest])
-        s2 = random.choice([s for s in solution[v2] if s.delivery_location_id == dest])
+    if not common_dests:
+        return solution  # No common destinations => no swap
+    
+    # Pick one random destination from the intersection
+    dest = random.choice(list(common_dests))
+    
+    # Randomly pick one shipment from each vehicle that goes to this destination
+    s1 = random.choice([s for s in solution[v1] if s.delivery_location_id == dest])
+    s2 = random.choice([s for s in solution[v2] if s.delivery_location_id == dest])
+    
+    # Calculate what the loads would be AFTER swapping
+    # For v1, remove s1 and add s2
+    v1_new_cbm = sum(s.total_cbm for s in solution[v1] if s != s1) + s2.total_cbm
+    v1_new_weight = sum(s.weight for s in solution[v1] if s != s1) + s2.weight
+    
+    # For v2, remove s2 and add s1
+    v2_new_cbm = sum(s.total_cbm for s in solution[v2] if s != s2) + s1.total_cbm
+    v2_new_weight = sum(s.weight for s in solution[v2] if s != s2) + s1.weight
+    
+    # Check if both vehicles remain within capacity
+    if (v1_new_cbm <= v1.max_cbm and 
+        v1_new_weight <= v1.max_weight and
+        v2_new_cbm <= v2.max_cbm and
+        v2_new_weight <= v2.max_weight):
         
+        # All good: perform the swap
         solution[v1].remove(s1)
         solution[v2].remove(s2)
         solution[v1].append(s2)
         solution[v2].append(s1)
-        return solution
-    
+        
+    # Return the (possibly) updated solution
     return solution
+
 
 def proximity_based_swap(solution: Dict[Vehicle, List[Shipment]], 
                         v1: Vehicle, 
